@@ -128,3 +128,112 @@
     (ok true)
   )
 )
+
+;; User deposit function
+(define-public (deposit (amount uint))
+  (let (
+    (user tx-sender)
+    (current-deposit (default-to u0 (get amount (map-get? user-deposits { user: user }))))
+  )
+    (try! (stx-transfer? amount user (as-contract tx-sender)))
+    
+    ;; Update user's deposit record
+    (map-set user-deposits
+      { user: user }
+      { amount: (+ current-deposit amount) }
+    )
+    
+    ;; Update total funds locked
+    (var-set total-funds-locked (+ (var-get total-funds-locked) amount))
+    
+    ;; Check if rebalancing is needed after deposit
+    (if (> (var-get protocol-count) u0)
+      (try! (rebalance-funds))
+      (ok true)
+    )
+  )
+)
+
+;; User withdrawal function
+(define-public (withdraw (amount uint))
+  (let (
+    (user tx-sender)
+    (current-deposit (default-to u0 (get amount (map-get? user-deposits { user: user }))))
+  )
+    (asserts! (>= current-deposit amount) err-insufficient-balance)
+    
+    ;; First need to rebalance to ensure we have enough STX in the contract
+    (try! (rebalance-funds))
+    
+    ;; Update user's deposit record
+    (map-set user-deposits
+      { user: user }
+      { amount: (- current-deposit amount) }
+    )
+    
+    ;; Update total funds locked
+    (var-set total-funds-locked (- (var-get total-funds-locked) amount))
+    
+    ;; Transfer STX back to user
+    (as-contract (stx-transfer? amount (as-contract tx-sender) user))
+  )
+)
+
+;; Rebalance funds based on APY data
+(define-public (rebalance-funds)
+  (begin
+    (asserts! (or (is-eq tx-sender contract-owner) (is-eq tx-sender (as-contract tx-sender))) err-owner-only)
+    
+    ;; First, collect performance fees if needed
+    (try! (collect-performance-fees))
+    
+    ;; Then perform the rebalancing
+    (try! (execute-rebalance))
+    
+    (ok true)
+  )
+)
+
+;; Core rebalance logic
+(define-private (execute-rebalance)
+  (let (
+    (count (var-get protocol-count))
+    (total-funds (var-get total-funds-locked))
+  )
+    (asserts! (> count u0) err-no-eligible-protocols)
+    
+    ;; Find highest APY protocol with risk adjustment
+    (let ((best-protocol (find-best-protocol-allocation u0 count)))
+      (try! (allocate-funds best-protocol total-funds))
+      (ok true)
+    )
+  )
+)
+
+;; Find the best protocol allocation based on APY and risk
+(define-private (find-best-protocol-allocation (start uint) (end uint))
+  (let (
+    (allocations (calculate-optimal-allocations start end))
+  )
+    allocations
+  )
+)
+
+;; Calculate optimal allocations based on risk-adjusted returns
+(define-private (calculate-optimal-allocations (start uint) (end uint))
+  (let (
+    (allocation-map (generate-initial-allocations start end))
+  )
+    allocation-map
+  )
+)
+
+;; Placeholder for the allocation algorithm
+;; In a real implementation, this would use a more sophisticated algorithm
+(define-private (generate-initial-allocations (start uint) (end uint))
+  (let (
+    (allocation-list (list u0 u1 u2 u3 u4))
+  )
+    allocation-list
+  )
+)
