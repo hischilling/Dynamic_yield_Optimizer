@@ -101,3 +101,30 @@
     (find-protocol-by-principal protocol-principal u0 count)
   )
 )
+(define-private (find-protocol-by-principal (protocol-principal principal) (current uint) (max uint))
+  (if (>= current max)
+    none
+    (let ((protocol (unwrap! (map-get? protocols { protocol-id: current }) (find-protocol-by-principal protocol-principal (+ current u1) max))))
+      (if (is-eq (get protocol-principal protocol) protocol-principal)
+        (some { protocol-id: current, protocol-data: protocol })
+        (find-protocol-by-principal protocol-principal (+ current u1) max)
+      )
+    )
+  )
+)
+
+;; Update APY for a protocol
+(define-public (update-protocol-apy (protocol-id uint) (new-apy uint))
+  (begin
+    (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+    (asserts! (is-some (map-get? protocols { protocol-id: protocol-id })) err-protocol-not-found)
+    
+    (map-set protocols
+      { protocol-id: protocol-id }
+      (merge (unwrap-panic (map-get? protocols { protocol-id: protocol-id }))
+             { current-apy: new-apy })
+    )
+    
+    (ok true)
+  )
+)
