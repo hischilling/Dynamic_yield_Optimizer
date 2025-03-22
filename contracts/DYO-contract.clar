@@ -101,3 +101,225 @@
     (find-protocol-by-principal protocol-principal u0 count)
   )
 )
+(define-private (find-protocol-by-principal (protocol-principal principal) (current uint) (max uint))
+  (if (>= current max)
+    none
+    (let ((protocol (unwrap! (map-get? protocols { protocol-id: current }) (find-protocol-by-principal protocol-principal (+ current u1) max))))
+      (if (is-eq (get protocol-principal protocol) protocol-principal)
+        (some { protocol-id: current, protocol-data: protocol })
+        (find-protocol-by-principal protocol-principal (+ current u1) max)
+      )
+    )
+  )
+)
+
+;; Update APY for a protocol
+(define-public (update-protocol-apy (protocol-id uint) (new-apy uint))
+  (begin
+    (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+    (asserts! (is-some (map-get? protocols { protocol-id: protocol-id })) err-protocol-not-found)
+    
+    (map-set protocols
+      { protocol-id: protocol-id }
+      (merge (unwrap-panic (map-get? protocols { protocol-id: protocol-id }))
+             { current-apy: new-apy })
+    )
+    
+    (ok true)
+  )
+)
+
+;; User deposit function
+(define-public (deposit (amount uint))
+  (let (
+    (user tx-sender)
+    (current-deposit (default-to u0 (get amount (map-get? user-deposits { user: user }))))
+  )
+    (try! (stx-transfer? amount user (as-contract tx-sender)))
+    
+    ;; Update user's deposit record
+    (map-set user-deposits
+      { user: user }
+      { amount: (+ current-deposit amount) }
+    )
+    
+    ;; Update total funds locked
+    (var-set total-funds-locked (+ (var-get total-funds-locked) amount))
+    
+    ;; Check if rebalancing is needed after deposit
+    (if (> (var-get protocol-count) u0)
+      (try! (rebalance-funds))
+      (ok true)
+    )
+  )
+)
+
+;; User withdrawal function
+(define-public (withdraw (amount uint))
+  (let (
+    (user tx-sender)
+    (current-deposit (default-to u0 (get amount (map-get? user-deposits { user: user }))))
+  )
+    (asserts! (>= current-deposit amount) err-insufficient-balance)
+    
+    ;; First need to rebalance to ensure we have enough STX in the contract
+    (try! (rebalance-funds))
+    
+    ;; Update user's deposit record
+    (map-set user-deposits
+      { user: user }
+      { amount: (- current-deposit amount) }
+    )
+    
+    ;; Update total funds locked
+    (var-set total-funds-locked (- (var-get total-funds-locked) amount))
+    
+    ;; Transfer STX back to user
+    (as-contract (stx-transfer? amount (as-contract tx-sender) user))
+  )
+)
+
+;; Rebalance funds based on APY data
+(define-public (rebalance-funds)
+  (begin
+    (asserts! (or (is-eq tx-sender contract-owner) (is-eq tx-sender (as-contract tx-sender))) err-owner-only)
+    
+    ;; First, collect performance fees if needed
+    (try! (collect-performance-fees))
+    
+    ;; Then perform the rebalancing
+    (try! (execute-rebalance))
+    
+    (ok true)
+  )
+)
+
+;; Core rebalance logic
+(define-private (execute-rebalance)
+  (let (
+    (count (var-get protocol-count))
+    (total-funds (var-get total-funds-locked))
+  )
+    (asserts! (> count u0) err-no-eligible-protocols)
+    
+    ;; Find highest APY protocol with risk adjustment
+    (let ((best-protocol (find-best-protocol-allocation u0 count)))
+      (try! (allocate-funds best-protocol total-funds))
+      (ok true)
+    )
+  )
+)
+
+;; Find the best protocol allocation based on APY and risk
+(define-private (find-best-protocol-allocation (start uint) (end uint))
+  (let (
+    (allocations (calculate-optimal-allocations start end))
+  )
+    allocations
+  )
+)
+
+;; Calculate optimal allocations based on risk-adjusted returns
+(define-private (calculate-optimal-allocations (start uint) (end uint))
+  (let (
+    (allocation-map (generate-initial-allocations start end))
+  )
+    allocation-map
+  )
+)
+
+;; Placeholder for the allocation algorithm
+;; In a real implementation, this would use a more sophisticated algorithm
+(define-private (generate-initial-allocations (start uint) (end uint))
+  (let (
+    (allocation-list (list u0 u1 u2 u3 u4))
+  )
+    allocation-list
+  )
+)
+wal-signatures (append current-signatures signer))
+    
+    (ok true)
+  )
+)
+
+;; Execute emergency withdrawal once threshold is met
+(define-public (execute-emergency-withdraw (recipient principal))
+  (let (
+    (signatures (var-get emergency-withdrawal-signatures))
+    (threshold (var-get required-signatures))
+  )
+    (asserts! (>= (len signatures) threshold) err-not-authorized)
+    
+    ;; Reset signatures after use
+    (var-set emergency-withdrawal-signatures (list))
+    
+    ;; Transfer all funds to the specified recipient
+    (as-contract (stx-transfer? (var-get total-funds-locked) (as-contract tx-sender) recipient))
+  )
+)
+
+;; Collect performance fees
+(define-private (collect-performance-fees)
+  (let (
+    (current-height block-height)
+    (last-collection (var-get last-fee-collection-height))
+    (fee-percent (var-get performance-fee))
+  )
+    ;; Only collect fees if it's been more than 144 blocks (approximately 1 day)
+    (if (> (- current-height last-collection) u144)
+      (let (
+        (total-funds (var-get total-funds-locked))
+        (fee-amount (/ (* total-funds fee-percent) u10000))
+      )
+        (var-set last-fee-collection-height current-height)
+        
+        ;; Transfer fees to contract owner
+        (if (> fee-amount u0)
+          (as-contract (stx-transfer? fee-amount (as-contract tx-sender) contract-owner))
+          (ok true)
+        )
+      )
+      (ok true)
+    )
+  )
+)
+
+;; Update rebalance threshold
+(define-public (set-rebalance-threshold (new-threshold uint))
+  (begin
+    (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+    (var-set rebalance-threshold new-threshold)
+    (ok true)
+  )
+)
+
+;; Update performance fee
+(define-public (set-performance-fee (new-fee uint))
+  (begin
+    (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+    (asserts! (<= new-fee u3000) err-threshold-invalid) ;; Max fee of 30%
+    (var-set performance-fee new-fee)
+    (ok true)
+  )
+)
+
+;; Getter for protocol information
+(define-read-only (get-protocol-info (protocol-id uint))
+  (map-get? protocols { protocol-id: protocol-id })
+)
+
+;; Getter for user deposit
+(define-read-only (get-user-deposit (user principal))
+  (default-to u0 (get amount (map-get? user-deposits { user: user })))
+)
+
+;; Getter for total funds locked
+(define-read-only (get-total-funds-locked)
+  (var-get total-funds-locked)
+)
+
+;; Getter for current performance fee
+(define-read-only (get-performance-fee)
+  (var-get performance-fee)
+)
