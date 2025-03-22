@@ -29,3 +29,24 @@
     current-balance: uint
   }
 )
+;; Keep track of all registered protocol IDs
+(define-data-var protocol-count uint u0)
+(define-data-var total-funds-locked uint u0)
+
+;; Rebalancing threshold in basis points
+;; If APY difference between protocols exceeds this, rebalance
+(define-data-var rebalance-threshold uint u200) ;; Default 2%
+
+;; Emergency multisig variables
+(define-map authorized-signers { signer: principal } { authorized: bool })
+(define-data-var required-signatures uint u3)
+(define-data-var emergency-withdrawal-signatures (list 10 principal) (list))
+
+;; Performance fee in basis points
+(define-data-var performance-fee uint u1000) ;; Default 10%
+(define-data-var last-fee-collection-height uint u0)
+
+;; User deposits
+(define-map user-deposits
+  { user: principal }
+  { amount: uint }
