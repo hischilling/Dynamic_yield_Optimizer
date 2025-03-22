@@ -237,3 +237,89 @@
     allocation-list
   )
 )
+wal-signatures (append current-signatures signer))
+    
+    (ok true)
+  )
+)
+
+;; Execute emergency withdrawal once threshold is met
+(define-public (execute-emergency-withdraw (recipient principal))
+  (let (
+    (signatures (var-get emergency-withdrawal-signatures))
+    (threshold (var-get required-signatures))
+  )
+    (asserts! (>= (len signatures) threshold) err-not-authorized)
+    
+    ;; Reset signatures after use
+    (var-set emergency-withdrawal-signatures (list))
+    
+    ;; Transfer all funds to the specified recipient
+    (as-contract (stx-transfer? (var-get total-funds-locked) (as-contract tx-sender) recipient))
+  )
+)
+
+;; Collect performance fees
+(define-private (collect-performance-fees)
+  (let (
+    (current-height block-height)
+    (last-collection (var-get last-fee-collection-height))
+    (fee-percent (var-get performance-fee))
+  )
+    ;; Only collect fees if it's been more than 144 blocks (approximately 1 day)
+    (if (> (- current-height last-collection) u144)
+      (let (
+        (total-funds (var-get total-funds-locked))
+        (fee-amount (/ (* total-funds fee-percent) u10000))
+      )
+        (var-set last-fee-collection-height current-height)
+        
+        ;; Transfer fees to contract owner
+        (if (> fee-amount u0)
+          (as-contract (stx-transfer? fee-amount (as-contract tx-sender) contract-owner))
+          (ok true)
+        )
+      )
+      (ok true)
+    )
+  )
+)
+
+;; Update rebalance threshold
+(define-public (set-rebalance-threshold (new-threshold uint))
+  (begin
+    (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+    (var-set rebalance-threshold new-threshold)
+    (ok true)
+  )
+)
+
+;; Update performance fee
+(define-public (set-performance-fee (new-fee uint))
+  (begin
+    (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+    (asserts! (<= new-fee u3000) err-threshold-invalid) ;; Max fee of 30%
+    (var-set performance-fee new-fee)
+    (ok true)
+  )
+)
+
+;; Getter for protocol information
+(define-read-only (get-protocol-info (protocol-id uint))
+  (map-get? protocols { protocol-id: protocol-id })
+)
+
+;; Getter for user deposit
+(define-read-only (get-user-deposit (user principal))
+  (default-to u0 (get amount (map-get? user-deposits { user: user })))
+)
+
+;; Getter for total funds locked
+(define-read-only (get-total-funds-locked)
+  (var-get total-funds-locked)
+)
+
+;; Getter for current performance fee
+(define-read-only (get-performance-fee)
+  (var-get performance-fee)
+)
