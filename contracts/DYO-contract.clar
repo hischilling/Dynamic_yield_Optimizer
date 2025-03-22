@@ -65,3 +65,38 @@
   )
 )
 
+;; Helper to add a signer
+(define-private (add-authorized-signer (signer principal))
+  (map-set authorized-signers { signer: signer } { authorized: true })
+)
+
+;; Add a new yield protocol
+(define-public (add-protocol (protocol-principal principal) (risk-score uint))
+  (let ((new-id (var-get protocol-count)))
+    (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+    (asserts! (is-none (get-protocol-by-principal protocol-principal)) err-protocol-exists)
+    (asserts! (<= risk-score u10) err-threshold-invalid)
+    
+    (map-set protocols
+      { protocol-id: new-id }
+      {
+        protocol-principal: protocol-principal,
+        current-apy: u0,
+        risk-score: risk-score,
+        allocation-percentage: u0,
+        current-balance: u0
+      }
+    )
+    
+    (var-set protocol-count (+ new-id u1))
+    
+    (ok new-id)
+  )
+)
+
+;; Helper to find protocol by principal
+(define-private (get-protocol-by-principal (protocol-principal principal))
+  (let ((count (var-get protocol-count)))
+    (find-protocol-by-principal protocol-principal u0 count)
+  )
+)
