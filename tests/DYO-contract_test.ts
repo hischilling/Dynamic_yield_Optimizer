@@ -70,3 +70,32 @@ Clarinet.test({
                 )
             ]);
             assertEquals(block.receipts[0].result, `(err u100)`); // err-owner-only
+                    // Owner can add protocol
+        block = chain.mineBlock([
+            Tx.contractCall(
+                'yield-optimizer',
+                'add-protocol',
+                [
+                    types.principal(wallet1.address),
+                    types.uint(5)
+                ],
+                deployer.address
+            )
+        ]);
+        assertEquals(block.receipts[0].result, `(ok u0)`);
+
+        // Can't add same protocol twice
+        block = chain.mineBlock([
+            Tx.contractCall(
+                'yield-optimizer',
+                'add-protocol',
+                [
+                    types.principal(wallet1.address),
+                    types.uint(5)
+                ],
+                deployer.address
+            )
+        ]);
+        assertEquals(block.receipts[0].result, `(err u101)`); // err-protocol-exists
+    }
+});
