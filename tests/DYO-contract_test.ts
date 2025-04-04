@@ -190,3 +190,84 @@ Clarinet.test({
         assertEquals(block.receipts[0].result, `(err u103)`); // err-insufficient-balance
     }
 });
+Clarinet.test({
+    name: "Test protocol APY updates",
+    async fn(chain: Chain, accounts: Map<string, Account>) {
+        const deployer = accounts.get('deployer')!;
+        const wallet1 = accounts.get('wallet_1')!;
+        const wallet2 = accounts.get('wallet_2')!;
+        
+        // Initialize and add protocol
+        let block = chain.mineBlock([
+            Tx.contractCall(
+                'yield-optimizer',
+                'initialize',
+                [
+                    types.list([types.principal(wallet1.address)]),
+                    types.uint(1)
+                ],
+                deployer.address
+            ),
+            Tx.contractCall(
+                'yield-optimizer',
+                'add-protocol',
+                [
+                    types.principal(wallet2.address),
+                    types.uint(5)
+                ],
+                deployer.address
+            )
+        ]);
+
+        // Update APY
+        block = chain.mineBlock([
+            Tx.contractCall(
+                'yield-optimizer',
+                'update-protocol-apy',
+                [
+                    types.uint(0),
+                    types.uint(500) // 5%
+                ],
+                deployer.address
+            )
+        ]);
+        assertEquals(block.receipts[0].result, `(ok true)`);
+
+        // Check protocol info
+        let receipt = chain.callReadOnlyFn(
+            'yield-optimizer',
+            'get-protocol-info',
+            [types.uint(0)],
+            wallet1.address
+        );
+        assertEquals(receipt.result, `(ok {current-apy: u500, protocol-principal: ${wallet2.address}, risk-score: u5, allocation-percentage: u0, current-balance: u0})`);
+    }
+});
+Clarinet.test({
+    name: "Test emergency withdrawal",
+    async fn(chain: Chain, accounts: Map<string, Account>) {
+        const deployer = accounts.get('deployer')!;
+        const wallet1 = accounts.get('wallet_1')!;
+        const wallet2 = accounts.get('wallet_2')!;
+        const wallet3 = accounts.get('wallet_3')!;
+        const amount = 1000;
+        
+        // Initialize with 3 signers and threshold 2
+        let block = chain.mineBlock([
+            Tx.contractCall(
+                'yield-optimizer',
+                'initialize',
+                [
+                    types.list([
+                        types.principal(wallet1.address),
+                        types.principal(wallet2.address),
+                        types.principal(wallet3.address)
+                    ]),
+                    types.uint(2)
+                ],
+                deployer.address
+            ),
+            Tx.contractCall(
+                'yield-optimizer',
+                'add-protocol',
+                [
