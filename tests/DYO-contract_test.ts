@@ -271,3 +271,31 @@ Clarinet.test({
                 'yield-optimizer',
                 'add-protocol',
                 [
+                    types.principal(wallet2.address),
+                    types.uint(5)
+                ],
+                deployer.address
+            ),
+            Tx.contractCall(
+                'yield-optimizer',
+                'deposit',
+                [types.uint(amount)],
+                wallet1.address
+            )
+        ]);
+
+        // First signer approves
+        block = chain.mineBlock([
+            Tx.contractCall(
+                'yield-optimizer',
+                'approve-emergency-withdraw',
+                [],
+                wallet1.address
+            )
+        ]);
+        assertEquals(block.receipts[0].result, `(ok true)`);
+
+        // Try to execute with only 1 signature
+        block = chain.mineBlock([
+            Tx.contractCall(
+                'yield-optimizer', 
