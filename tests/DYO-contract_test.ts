@@ -99,3 +99,94 @@ Clarinet.test({
         assertEquals(block.receipts[0].result, `(err u101)`); // err-protocol-exists
     }
 });
+Clarinet.test({
+    name: "Test deposit and withdrawal flow",
+    async fn(chain: Chain, accounts: Map<string, Account>) {
+        const deployer = accounts.get('deployer')!;
+        const wallet1 = accounts.get('wallet_1')!;
+        const wallet2 = accounts.get('wallet_2')!;
+        const amount = 1000;
+        
+        // Initialize first
+        let block = chain.mineBlock([
+            Tx.contractCall(
+                'yield-optimizer',
+                'initialize',
+                [
+                    types.list([types.principal(wallet1.address)]),
+                    types.uint(1)
+                ],
+                deployer.address
+            ),
+            Tx.contractCall(
+                'yield-optimizer',
+                'add-protocol',
+                [
+                    types.principal(wallet2.address),
+                    types.uint(5)
+                ],
+                deployer.address
+            )
+        ]);
+
+        // Wallet1 deposits
+        block = chain.mineBlock([
+            Tx.contractCall(
+                'yield-optimizer',
+                'deposit',
+                [types.uint(amount)],
+                wallet1.address
+            )
+        ]);
+        assertEquals(block.receipts[0].result, `(ok true)`);
+
+        // Check user deposit
+        let receipt = chain.callReadOnlyFn(
+            'yield-optimizer',
+            'get-user-deposit',
+            [types.principal(wallet1.address)],
+            wallet1.address
+        );
+        assertEquals(receipt.result, `(ok u${amount})`);
+
+        // Check total funds
+        receipt = chain.callReadOnlyFn(
+            'yield-optimizer',
+            'get-total-funds-locked',
+            [],
+            wallet1.address
+        );
+        assertEquals(receipt.result, `(ok u${amount})`);
+
+        // Withdraw half
+        block = chain.mineBlock([
+            Tx.contractCall(
+                'yield-optimizer',
+                'withdraw',
+                [types.uint(amount/2)],
+                wallet1.address
+            )
+        ]);
+        assertEquals(block.receipts[0].result, `(ok true)`);
+
+        // Check updated balance
+        receipt = chain.callReadOnlyFn(
+            'yield-optimizer',
+            'get-user-deposit',
+            [types.principal(wallet1.address)],
+            wallet1.address
+        );
+        assertEquals(receipt.result, `(ok u${amount/2})`);
+
+        // Can't withdraw more than deposited
+        block = chain.mineBlock([
+            Tx.contractCall(
+                'yield-optimizer',
+                'withdraw',
+                [types.uint(amount*2)],
+                wallet1.address
+            )
+        ]);
+        assertEquals(block.receipts[0].result, `(err u103)`); // err-insufficient-balance
+    }
+});
