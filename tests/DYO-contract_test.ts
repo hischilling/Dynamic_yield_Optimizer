@@ -43,3 +43,30 @@ Clarinet.test({
         async fn(chain: Chain, accounts: Map<string, Account>) {
             const deployer = accounts.get('deployer')!;
             const wallet1 = accounts.get('wallet_1')!;
+
+               // Initialize first
+               let block = chain.mineBlock([
+                Tx.contractCall(
+                    'yield-optimizer',
+                    'initialize',
+                    [
+                        types.list([types.principal(wallet1.address)]),
+                        types.uint(1)
+                    ],
+                    deployer.address
+                )
+            ]);
+    
+            // Non-owner can't add protocol
+            block = chain.mineBlock([
+                Tx.contractCall(
+                    'yield-optimizer',
+                    'add-protocol',
+                    [
+                        types.principal(wallet1.address),
+                        types.uint(5)
+                    ],
+                    wallet1.address
+                )
+            ]);
+            assertEquals(block.receipts[0].result, `(err u100)`); // err-owner-only
