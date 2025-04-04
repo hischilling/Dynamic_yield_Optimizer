@@ -21,3 +21,25 @@ Clarinet.test({
         ]);
         assertEquals(block.receipts.length, 1);
         assertEquals(block.receipts[0].result, `(err u100)`); // err-owner-only
+             // Owner can initialize
+             block = chain.mineBlock([
+                Tx.contractCall(
+                    'yield-optimizer',
+                    'initialize',
+                    [
+                        types.list([types.principal(wallet1.address)]),
+                        types.uint(1)
+                    ],
+                    deployer.address
+                )
+            ]);
+            assertEquals(block.receipts.length, 1);
+            assertEquals(block.receipts[0].result, `(ok true)`);
+        }
+    });
+    
+    Clarinet.test({
+        name: "Ensure only owner can add protocols",
+        async fn(chain: Chain, accounts: Map<string, Account>) {
+            const deployer = accounts.get('deployer')!;
+            const wallet1 = accounts.get('wallet_1')!;
