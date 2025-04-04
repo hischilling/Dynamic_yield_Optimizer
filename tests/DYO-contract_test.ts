@@ -298,4 +298,96 @@ Clarinet.test({
         // Try to execute with only 1 signature
         block = chain.mineBlock([
             Tx.contractCall(
-                'yield-optimizer', 
+                'yield-optimizer',
+                'execute-emergency-withdraw',
+                [types.principal(wallet1.address)],
+                wallet1.address
+            )
+        ]);
+        assertEquals(block.receipts[0].result, `(err u105)`); // err-not-authorized
+
+        // Second signer approves
+        block = chain.mineBlock([
+            Tx.contractCall(
+                'yield-optimizer',
+                'approve-emergency-withdraw',
+                [],
+                wallet2.address
+            )
+        ]);
+        assertEquals(block.receipts[0].result, `(ok true)`);
+
+        // Now execute should work
+        block = chain.mineBlock([
+            Tx.contractCall(
+                'yield-optimizer',
+                'execute-emergency-withdraw',
+                [types.principal(wallet1.address)],
+                wallet1.address
+            )
+        ]);
+        assertEquals(block.receipts[0].result, `(ok true)`);
+    }
+});
+Clarinet.test({
+    name: "Test performance fee collection",
+    async fn(chain: Chain, accounts: Map<string, Account>) {
+        const deployer = accounts.get('deployer')!;
+        const wallet1 = accounts.get('wallet_1')!;
+        const wallet2 = accounts.get('wallet_2')!;
+        const amount = 1000000; // 1M uSTX
+        
+        // Initialize and add protocol
+        let block = chain.mineBlock([
+            Tx.contractCall(
+                'yield-optimizer',
+                'initialize',
+                [
+                    types.list([types.principal(wallet1.address)]),
+                    types.uint(1)
+                ],
+                deployer.address
+            ),
+            Tx.contractCall(
+                'yield-optimizer',
+                'add-protocol',
+                [
+                    types.principal(wallet2.address),
+                    types.uint(5)
+                ],
+                deployer.address
+            ),
+            Tx.contractCall(
+                'yield-optimizer',
+                'deposit',
+                [types.uint(amount)],
+                wallet1.address
+            )
+        ]);
+
+        // Set performance fee to 10%
+        block = chain.mineBlock([
+            Tx.contractCall(
+                'yield-optimizer',
+                'set-performance-fee',
+                [types.uint(1000)],
+                deployer.address
+            )
+        ]);
+        assertEquals(block.receipts[0].result, `(ok true)`);
+
+        // Advance blocks to trigger fee collection
+        chain.mineEmptyBlock(145);
+
+        // Rebalance which should trigger fee collection
+        block = chain.mineBlock([
+            Tx.contractCall(
+                'yield-optimizer',
+                'rebalance-funds',
+                [],
+                deployer.address
+            )
+        ]);
+        assertEquals(block.receipts[0].result, `(ok true)`);
+    }
+});
