@@ -1,3 +1,4 @@
+
 # 🧠 Dynamic Yield Optimizer
 
 A smart contract written in Clarity for the Stacks blockchain that intelligently allocates user deposits across multiple yield-generating protocols based on real-time APY (Annual Percentage Yield) and risk data. It includes built-in rebalancing, emergency withdrawal capabilities via multisig, and performance fee handling.
@@ -153,8 +154,3 @@ The test script covers:
 - Emergency multisig ensures funds can be recovered if needed.
 - Withdrawals are only allowed up to the user's deposit.
 
----
-
-## 📄 License
-
-MIT License.
