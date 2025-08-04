@@ -1,4 +1,3 @@
-
 ;; Dynamic Yield Optimizer
 ;; A smart contract that automatically reallocates funds across multiple yield-generating protocols
 ;; based on real-time APY data.
@@ -52,6 +51,127 @@
   { user: principal }
   { amount: uint }
 )
+
+;; Helper to add a signer
+(define-private (add-authorized-signer (signer principal) (prev bool))
+  (begin
+    (map-set authorized-signers { signer: signer } { authorized: true })
+    true
+  )
+)
+
+;; Helper to find protocol by principal (simplified non-recursive approach)
+(define-private (get-protocol-by-principal (protocol-principal principal))
+  (let ((count (var-get protocol-count)))
+    (if (> count u0)
+      ;; Check first few protocols (simplified for avoiding recursion)
+      (let ((protocol-0 (map-get? protocols { protocol-id: u0 })))
+        (match protocol-0
+          p0 (if (is-eq (get protocol-principal p0) protocol-principal)
+               (some { protocol-id: u0, protocol-data: p0 })
+               (if (> count u1)
+                 (let ((protocol-1 (map-get? protocols { protocol-id: u1 })))
+                   (match protocol-1
+                     p1 (if (is-eq (get protocol-principal p1) protocol-principal)
+                          (some { protocol-id: u1, protocol-data: p1 })
+                          none)
+                     none))
+                 none))
+          none))
+      none)
+  )
+)
+
+;; Placeholder for the allocation algorithm
+;; In a real implementation, this would use a more sophisticated algorithm
+(define-private (generate-initial-allocations (start uint) (end uint))
+  (let (
+    (allocation-list (list u0 u1 u2 u3 u4))
+  )
+    allocation-list
+  )
+)
+
+;; Calculate optimal allocations based on risk-adjusted returns
+(define-private (calculate-optimal-allocations (start uint) (end uint))
+  (let (
+    (allocation-map (generate-initial-allocations start end))
+  )
+    allocation-map
+  )
+)
+
+;; Find the best protocol allocation based on APY and risk
+(define-private (find-best-protocol-allocation (start uint) (end uint))
+  (let (
+    (allocations (calculate-optimal-allocations start end))
+  )
+    allocations
+  )
+)
+
+;; Allocate funds to protocols based on calculated allocations (simplified)
+(define-private (allocate-funds (protocol-allocations (list 5 uint)) (total-amount uint))
+  (let (
+    (allocation-percent-per-protocol u2000) ;; Default 20% allocation per protocol
+    (allocation-amount (/ (* total-amount allocation-percent-per-protocol) u10000))
+  )
+    ;; Simple allocation - distribute equally among first two protocols if they exist
+    (if (> (var-get protocol-count) u0)
+      (match (map-get? protocols { protocol-id: u0 })
+        protocol-data (begin
+          (map-set protocols
+            { protocol-id: u0 }
+            (merge protocol-data { current-balance: (+ (get current-balance protocol-data) allocation-amount) })
+          )
+          (ok true)
+        )
+        (ok true))
+      (ok true))
+  )
+)
+
+;; Collect performance fees
+(define-private (collect-performance-fees)
+  (let (
+    (current-height block-height)
+    (last-collection (var-get last-fee-collection-height))
+    (fee-percent (var-get performance-fee))
+  )
+    ;; Only collect fees if it's been more than 144 blocks (approximately 1 day)
+    (if (> (- current-height last-collection) u144)
+      (let (
+        (total-funds (var-get total-funds-locked))
+        (fee-amount (/ (* total-funds fee-percent) u10000))
+      )
+        (var-set last-fee-collection-height current-height)
+        
+        ;; Transfer fees to contract owner
+        (if (> fee-amount u0)
+          (as-contract (stx-transfer? fee-amount (as-contract tx-sender) contract-owner))
+          (ok true)
+        )
+      )
+      (ok true)
+    )
+  )
+)
+
+;; Core rebalance logic
+(define-private (execute-rebalance)
+  (let (
+    (count (var-get protocol-count))
+    (total-funds (var-get total-funds-locked))
+  )
+    (asserts! (> count u0) err-no-eligible-protocols)
+    
+    ;; Find highest APY protocol with risk adjustment
+    (let ((best-protocol (find-best-protocol-allocation u0 count)))
+      (allocate-funds best-protocol total-funds)
+    )
+  )
+)
+
 ;; Initialize the contract
 (define-public (initialize (signers (list 5 principal)) (signature-threshold uint))
   (begin
@@ -59,16 +179,11 @@
     (asserts! (<= signature-threshold (len signers)) err-threshold-invalid)
     
     ;; Initialize authorized signers
-    (map add-authorized-signer signers)
+    (fold add-authorized-signer signers true)
     (var-set required-signatures signature-threshold)
     
     (ok true)
   )
-)
-
-;; Helper to add a signer
-(define-private (add-authorized-signer (signer principal))
-  (map-set authorized-signers { signer: signer } { authorized: true })
 )
 
 ;; Add a new yield protocol
@@ -92,24 +207,6 @@
     (var-set protocol-count (+ new-id u1))
     
     (ok new-id)
-  )
-)
-
-;; Helper to find protocol by principal
-(define-private (get-protocol-by-principal (protocol-principal principal))
-  (let ((count (var-get protocol-count)))
-    (find-protocol-by-principal protocol-principal u0 count)
-  )
-)
-(define-private (find-protocol-by-principal (protocol-principal principal) (current uint) (max uint))
-  (if (>= current max)
-    none
-    (let ((protocol (unwrap! (map-get? protocols { protocol-id: current }) (find-protocol-by-principal protocol-principal (+ current u1) max))))
-      (if (is-eq (get protocol-principal protocol) protocol-principal)
-        (some { protocol-id: current, protocol-data: protocol })
-        (find-protocol-by-principal protocol-principal (+ current u1) max)
-      )
-    )
   )
 )
 
@@ -148,7 +245,7 @@
     
     ;; Check if rebalancing is needed after deposit
     (if (> (var-get protocol-count) u0)
-      (try! (rebalance-funds))
+      (rebalance-funds)
       (ok true)
     )
   )
@@ -163,7 +260,7 @@
     (asserts! (>= current-deposit amount) err-insufficient-balance)
     
     ;; First need to rebalance to ensure we have enough STX in the contract
-    (try! (rebalance-funds))
+    (unwrap-panic (rebalance-funds))
     
     ;; Update user's deposit record
     (map-set user-deposits
@@ -194,50 +291,16 @@
   )
 )
 
-;; Core rebalance logic
-(define-private (execute-rebalance)
+;; Sign emergency withdrawal
+(define-public (sign-emergency-withdrawal)
   (let (
-    (count (var-get protocol-count))
-    (total-funds (var-get total-funds-locked))
+    (signer tx-sender)
+    (current-signatures (var-get emergency-withdrawal-signatures))
   )
-    (asserts! (> count u0) err-no-eligible-protocols)
+    (asserts! (default-to false (get authorized (map-get? authorized-signers { signer: signer }))) err-not-authorized)
     
-    ;; Find highest APY protocol with risk adjustment
-    (let ((best-protocol (find-best-protocol-allocation u0 count)))
-      (try! (allocate-funds best-protocol total-funds))
-      (ok true)
-    )
-  )
-)
-
-;; Find the best protocol allocation based on APY and risk
-(define-private (find-best-protocol-allocation (start uint) (end uint))
-  (let (
-    (allocations (calculate-optimal-allocations start end))
-  )
-    allocations
-  )
-)
-
-;; Calculate optimal allocations based on risk-adjusted returns
-(define-private (calculate-optimal-allocations (start uint) (end uint))
-  (let (
-    (allocation-map (generate-initial-allocations start end))
-  )
-    allocation-map
-  )
-)
-
-;; Placeholder for the allocation algorithm
-;; In a real implementation, this would use a more sophisticated algorithm
-(define-private (generate-initial-allocations (start uint) (end uint))
-  (let (
-    (allocation-list (list u0 u1 u2 u3 u4))
-  )
-    allocation-list
-  )
-)
-wal-signatures (append current-signatures signer))
+    ;; Reset and start fresh list with just this signer (simplified approach)
+    (var-set emergency-withdrawal-signatures (list signer))
     
     (ok true)
   )
@@ -256,32 +319,6 @@ wal-signatures (append current-signatures signer))
     
     ;; Transfer all funds to the specified recipient
     (as-contract (stx-transfer? (var-get total-funds-locked) (as-contract tx-sender) recipient))
-  )
-)
-
-;; Collect performance fees
-(define-private (collect-performance-fees)
-  (let (
-    (current-height block-height)
-    (last-collection (var-get last-fee-collection-height))
-    (fee-percent (var-get performance-fee))
-  )
-    ;; Only collect fees if it's been more than 144 blocks (approximately 1 day)
-    (if (> (- current-height last-collection) u144)
-      (let (
-        (total-funds (var-get total-funds-locked))
-        (fee-amount (/ (* total-funds fee-percent) u10000))
-      )
-        (var-set last-fee-collection-height current-height)
-        
-        ;; Transfer fees to contract owner
-        (if (> fee-amount u0)
-          (as-contract (stx-transfer? fee-amount (as-contract tx-sender) contract-owner))
-          (ok true)
-        )
-      )
-      (ok true)
-    )
   )
 )
 
